@@ -21,17 +21,17 @@ print(dev)
 class LunarLanderDynamics():
 
     ## Training Data
-    n_samples=1000
-    batch_size = 10
-    n_epochs = 50
+    n_samples=100000
+    batch_size = 1
+    n_epochs = 500
 
     ## Model Data
     #input_size = 10
-    input_size = 5
+    input_size = 5 # state space size + action size
     hidden_size = 128
     #output_size = 8
     output_size = 4
-    learning_rate = 0.001
+    learning_rate = 0.01
 
     ## CEM Data
     n_iter= 500
@@ -124,7 +124,18 @@ class LunarLanderDynamics():
         X = torch.tensor(X, dtype=torch.float32).cuda()
         Y = torch.tensor(Y, dtype=torch.float32).cuda()
 
-        return X,Y
+
+        x_train,y_train,x_val,y_val = self.split_data(X,Y)
+
+
+        return x_train,y_train,x_val,y_val 
+    def split_data(self,X,Y):
+        train_size = int(0.8 * len(X))
+        test_size = len(X) - train_size
+        x_train, x_val = torch.utils.data.random_split(X, [train_size, test_size])
+        y_train, y_val = torch.utils.data.random_split(Y, [train_size, test_size])
+
+        return x_train,y_train,x_val,y_val 
 
     def __train_batch(self,model,loss_fn,optimizer,xbatch, y):
         hidden = model.init_hidden()
@@ -172,18 +183,22 @@ class LunarLanderDynamics():
         return loss
 
 
-    def train(self,model,loss_fn,optimizer, X, Y):
+    def train(self,model,loss_fn,optimizer, x_train,y_train,x_val,y_val):
         for epoch in range(self.n_epochs):
             loss = 0
-            for i in range(0, len(X)):
-                Xbatch = X[i]
-                y = Y[i]
+            for i in range(0, len(x_train)):
+                Xbatch = x_train[i]
+                y = y_train[i]
                 output, l = self.__train_batch(model,loss_fn,optimizer,Xbatch,y)
                 loss += l
 
-            loss = loss / len(X)
+            train_loss = loss / len(x_train)
 
-            print(f'Finished epoch {epoch}, latest loss {loss}')
+            val_loss = self.predict(model,loss_fn,optimizer,x_val,y_val)
+
+
+
+            print(f'Finished epoch {epoch}, Training loss: {train_loss}, Validation Loss: {val_loss}')
 
     def CEM(self,initial_observation,loss_fn):
 
@@ -290,15 +305,11 @@ ll = LunarLanderDynamics()
 
 model,loss_fn,optimizer = ll.generate_model()
 
-X,Y = ll.gather_training_data(loss_fn)
+x_train,y_train,x_val,y_val = ll.gather_training_data(loss_fn)
 
-ll.train(model,loss_fn,optimizer,X,Y)
+ll.train(model,loss_fn,optimizer,x_train,y_train,x_val,y_val)
 print("Saving Weights")
 torch.save(model.state_dict(), "model_weights.pth")
-
-#ll.n_samples = 10000
-#ll.gather_training_data(loss_fn,True, True)
-#exit()
 
 ll.n_epochs = 10
 ll.n_samples = 100
